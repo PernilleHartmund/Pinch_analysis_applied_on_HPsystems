@@ -1,0 +1,427 @@
+"Pinch analysis applied to a two, onestage heat pump system"
+"Method described in Jørgensen, P. H., Ommen, Elmegaard, B. Quantification and comparison of COP improvement approaches. Submitted to International Journal of Refrigeration. "
+ 
+$Keyboard EU
+$UnitSystem SI MASS DEG BAR C KJ
+ 
+Function cdot(C_dot;T_i;T_o;T_h;T_l)
+"checks if the stream is in the interval. Adjusts the capacity rate if the stream ends outside the temperature interval"
+	cdot=0
+	If (T_o>T_h) or (T_i<T_l) Then
+		cdot=0
+	Else
+		If (T_i>T_h) Then
+			If  (T_o<T_l) Then 
+				cdot=C_dot
+			Else
+				cdot=C_dot*(T_h-T_o)/(T_h-T_l)
+			Endif
+		Else
+			If (T_o>T_l) Then 
+				cdot=C_dot*(T_i-T_o)/(T_h-T_l)
+			Else
+				cdot=C_dot*(T_i-T_l)/(T_h-T_l)
+			Endif
+		Endif
+	Endif
+End
+Procedure pinch_x$(dT_pinch_x;DELTAT_min:err)
+"Gives an error if deltaT is below pinch constraint"
+If (dT_pinch_x>DELTAT_min) OR (dT_pinch_x=DELTAT_min) Then
+err=0
+Else
+err=(DELTAT_min - dT_pinch_x)+1
+Endif
+End
+ 
+"!Input"
+R$ = 'R717'	"Refrigerant"
+media_sec_DH$='water'	"Fluid secoundary, sink"
+media_sec_sr$ = 'water' 	"Fluid secoundary, source"
+Q_dot_sink_tot= 1500	"Total heating capacity"
+DELTAT_glide_source_tot=7	"Temperature glide, heat source"
+T_sour[1;2]=10	"Heat source inlet temperature"
+T_sink[1] = 50	"Heat sink inlet temperature"
+T_sink[7] = 80	"Heat sink outlet temperature"
+DELTAT_pp_evap_1 = 2,5	"Pinch temperature, evaporator HP1"
+DELTAT_pp_evap_2 = 2,5 	"Pinch temperature, evaporator HP2"
+eta_el = 0,98	"Efficiency of electric motor"
+eta_is_1 = 0,71	"Isentropic efficiency, HP1"
+eta_is_2 = 0,71	"Isentropic efficiency, HP2"
+x[8;1] = 0,7 [-]	"Outlet vapor quality evaporator, HP1"
+x[8;2] = 0,7 [-]	"Outlet vapor quality evaporator, HP2"
+P_sink_in = 5	"Pressure, sink"
+P_sr_in = 5	"Pressure, source"
+UNSH = 1	"Un-useful superheat"
+f_Q_1 = 0,1	"Heat loss compressor, HP1"
+f_Q_2 = 0,1	"Heat loss compressor, HP2"
+DELTAT_min=2,5 	"Pinch constraint"
+m=120	"Number of sub intervals in main interval 1"
+n=2	"Number of sub intervals in main interval 2"
+k=20	"Number of sub intervals in main interval 3"
+h=2	"Number of sub intervals in main interval 4"
+g=20	"Number of sub intervals in main interval 5"
+ 
+ 
+"For calculations with serial connection of heat sink and load share of 50%. "
+f_q_HP = 0,5 	"Load share"
+DELTAT_pp_cond_1 = 2,50001	"Pinch temperature difference condenser HP1, serial connection"
+DELTAT_pp_cond_2 = 2,50001	"Pinch temperature difference condenser HP2, serial connection"
+DELTAT_pp_sc_1 = 2,50001	"Pinch temperature difference subcooler HP1, serial connection"
+DELTAT_pp_sc_2 = 2,50001	"Pinch temperature difference subcooler HP2, serial connection"
+ 
+"In order to implement the pinch analysis combined with a optimization algorithm, outcomment the above 5 inputs and goto min/max (F5)."
+"Chose generic algorithm, maximize the variable COP_opt while varying T[3;1],T[3;2],T[5;1], T[5;2] and f_q_HP"
+ 
+ "!Calculations" 
+"source"
+T_sour[2;1]  = T_sour [1;2] - DELTAT_glide_source_tot
+T_sour[1;1] = T_sour[2;2]
+m_dot_sr_1 = m_dot_sr_2
+ 
+"Heat pump 1"
+"1 - before compressor"
+h_a[1;1] = enthalpy(R$; T= T_a[1;1];x=1)
+s_a[1;1] = entropy(R$; T=T_a[1;1];x=1)
+T_a[1;1] = temperature(R$;P=P_a[1;1];x=1)
+P_a[1;1] = P[8;1]
+ 
+T[1;1] = T_a[1;1] + UNSH
+h[1;1] = enthalpy(R$; T= T[1;1];P=P[1;1])
+s[1;1] = entropy(R$; T= T[1;1];P=P[1;1])
+P[1;1] = P_a[1;1]
+ 
+"2 - after compressor"
+h_2s_1 = enthalpy(R$; s=s[1;1];P=P[2;1])
+eta_is_1 = (h_2s_1-h[1;1]) / (h_2w_1-h[1;1])
+h[2;1] = h_2w_1 - f_Q_1 * (h_2w_1-h[1;1])
+T[2;1] = temperature(R$;h=h[2;1];P=P[2;1]) 
+T_2w_1 = temperature(R$;h=h_2w_1;P=P[2;1])
+T_2s_1= temperature(R$;h=h_2s_1;P=P[2;1])
+Q_fq_1 = m_dot_ref_1 * (h_2w_1 - h[2;1])
+P[2;1] = P[3;1] 
+ 
+"3, cond x=1"
+h[3;1] = enthalpy(R$;P=P[3;1];x=1)
+T[3;1] = temperature(R$;P=P[3;1];x=1)
+ 
+"4, cond x=0"
+h[4;1] = enthalpy(R$;P=P[4;1];x=0)
+T[4;1] = temperature(R$;P=P[4;1];x=0)
+P[4;1] = P[3;1]
+ 
+"5, end subcooler"
+h[5;1] = enthalpy(R$;P=P[5;1];T=T[5;1])
+T[5;1] = T[4;1]-dT_sc_1 
+ P[5;1] = P[4;1]
+ 
+"6, after expansion valve"
+h[6;1] = h[5;1]
+T[6;1] = temperature(R$;h=h[6;1];P=P[6;1])
+ P[6;1] = P[7;1]
+ 
+"7, inlet flooded evaporator"
+x[7;1] = 0 [-]
+h[7;1] = enthalpy(R$;P=P[7;1];x=x[7;1])
+T[7;1] = temperature(R$;P=P[7;1];x=x[7;1])
+P[7;1] = P[8;1] +0,001
+ 
+"8, outlet flooded evaporator"
+h[8;1] = enthalpy(R$;T=T[8;1];x=x[8;1])
+P[8;1] = pressure(R$;T=T[8;1];x=x[8;1]) 
+ 
+"heat pump 2"
+"1 - before compressor"
+h_a[1;2] = enthalpy(R$; T= T_a[1;2];x=1)
+s_a[1;2] = entropy(R$; T=T_a[1;2];x=1)
+T_a[1;2] = temperature(R$;P=P_a[1;2];x=1)
+P_a[1;2] = P[8;2]
+ 
+T[1;2] = T_a[1;2] + UNSH
+h[1;2] = enthalpy(R$; T= T[1;2];P=P[1;2])
+s[1;2] = entropy(R$; T= T[1;2];P=P[1;2])
+P[1;2] = P_a[1;2]
+ 
+"2 - after compressor"
+h_2s_2 = enthalpy(R$; s=s[1;2];P=P[2;2])
+eta_is_2 = (h_2s_2-h[1;2]) / (h_2w_2-h[1;2])
+h[2;2] = h_2w_2 - f_Q_2 * (h_2w_2-h[1;2])
+T[2;2] = temperature(R$;h=h[2;2];P=P[2;2]) 
+T_2w_2 = temperature(R$;h=h_2w_2;P=P[2;2])
+T_2s_2= temperature(R$;h=h_2s_2;P=P[2;2])
+Q_fq_2 = m_dot_ref_2 * (h_2w_2 - h[2;2])
+P[2;2] = P[3;2] 
+ 
+"3, cond x=1"
+h[3;2] = enthalpy(R$;P=P[3;2];x=1)
+T[3;2] = temperature(R$;P=P[3;2];x=1)
+ 
+"4, cond x=0"
+h[4;2] = enthalpy(R$;P=P[4;2];x=0)
+T[4;2] = temperature(R$;P=P[4;2];x=0)
+P[4;2] = P[3;2]
+ 
+"5, end subcooler"
+h[5;2] = enthalpy(R$;P=P[5;2];T=T[5;2])
+T[5;2] = T[4;2]-dT_sc_2 
+P[5;2] = P[4;2]
+ 
+"6, after expansion valve"
+h[6;2] = h[5;2]
+T[6;2] = temperature(R$;h=h[6;2];P=P[6;2])
+P[6;2] = P[7;2]
+ 
+"7, inlet flooded evaporator"
+x[7;2] = 0 [-]
+h[7;2] = enthalpy(R$;P=P[7;2];x=x[7;2])
+T[7;2] = temperature(R$;P=P[7;2];x=x[7;2])
+P[7;2] = P[8;2] + 0,001
+ 
+"8, outlet flooded evaporator"
+h[8;2] = enthalpy(R$;T=T[8;2];x=x[8;2])
+P[8;2] = pressure(R$;T=T[8;2];x=x[8;2]) 
+ 
+"Sink"
+Duplicate i = 1;7
+P_sink[i] = P_sink_in 
+h_sink[i]=enthalpy(media_sec_DH$;T=T_sink[i];P=p_sink[i])
+End
+ 
+"Source"
+Duplicate i = 1;2
+Duplicate ii = 1;2
+p_sr[i;ii]= P_sr_in
+h_sr[i;ii]=enthalpy(media_sec_sr$;T=T_sour[i;ii];P=p_sr[i;ii])
+End
+End
+ 
+"Load and massflows"
+Q_dot_sink_tot = m_dot_sink * (h_sink[7]-h_sink[1]) 
+Q_dot_sink_1 = Q_dot_sink_tot * f_q_HP
+Q_dot_sink_1 =m_dot_ref_1 * (h[2;1]-h[5;1])
+Q_dot_sink_2 =m_dot_ref_2 * (h[2;2]-h[5;2])
+Q_dot_sink_tot_test = Q_dot_sink_1 +Q_dot_sink_2 
+Q_dot_sink_1 = m_dot_sink*(h_sink[4] - h_sink[1])
+Q_dot_sink_2 = m_dot_sink*(h_sink[7] - h_sink[4])
+ 
+Q_dot_sc_1 = m_dot_ref_1 * (h[4;1]-h[5;1])
+Q_dot_cond_1 = m_dot_ref_1 * (h[3;1]-h[4;1])
+Q_dot_dsh_1 = m_dot_ref_1 * (h[2;1]-h[3;1])
+ 
+Q_dot_sc_2 = m_dot_ref_2 * (h[4;2]-h[5;2])
+Q_dot_cond_2 = m_dot_ref_2 * (h[3;2]-h[4;2])
+Q_dot_dsh_2 = m_dot_ref_2 * (h[2;2]-h[3;2])
+ 
+Q_dot_sc_2 = m_dot_sink *(h_sink[5] - h_sink[4])
+Q_dot_sc_1 = m_dot_sink *(h_sink[2] - h_sink[1])
+ 
+h[1;2]*m_dot_ref_2+m_dot_ref_e_2*h[7;2] = h[6;2]*m_dot_ref_2+h[8;2]*m_dot_ref_e_2 
+h[1;1]*m_dot_ref_1+m_dot_ref_e_1*h[7;1] = h[6;1]*m_dot_ref_1+h[8;1]*m_dot_ref_e_1
+ 
+Q_dot_sr_1 = m_dot_ref_e_1* (h[8;1]-h[7;1]) 
+Q_dot_sr_1 = m_dot_sr_1 * (h_sr[1;1]-h_sr[2;1])
+ 
+Q_dot_sr_2 = m_dot_ref_e_2* (h[8;2]-h[7;2]) 
+Q_dot_sr_2 = m_dot_sr_2 * (h_sr[1;2]-h_sr[2;2])
+ 
+W_dot_comp_1 = m_dot_ref_1 * (h_2w_1-h[1;1])
+W_dot_comp_2 = m_dot_ref_2 * (h_2w_2-h[1;2])
+ 
+eta_el = w_dot_comp_1/W_dot_comp_1_el
+eta_el = w_dot_comp_2/W_dot_comp_2_el
+ 
+"Pinch points for a serial connection"
+Q_dot_pp_1 = m_dot_ref_1 * (h[3;1] - h[5;1]) 
+Q_dot_pp_1 = m_dot_sink * (h_sink[3]-h_sink[1]) 
+  
+DELTAT_pp_evap_1=min(T_sour[1;1]-T[7;1];T_sour[2;1]-T[8;1]) 
+DELTAT_pp_cond_1= T[3;1] - T_sink[3]
+DELTAT_pp_sc_1=  T[5;1]-T_sink[1]
+ 
+Q_dot_pp_2 = m_dot_ref_2 * (h[3;2] - h[5;2]) 
+Q_dot_pp_2 = m_dot_sink * (h_sink[6]-h_sink[4]) 
+ 
+DELTAT_pp_evap_2=min(T_sour[1;2]-T[7;2];T_sour[2;2]-T[8;2]) 
+DELTAT_pp_cond_2= T[3;2] - T_sink[6]
+DELTAT_pp_sc_2=  T[5;2]-T_sink[4]
+ 
+PR_1 = P[3;1]/P[1;1] 
+PR_2 = P[3;2]/P[1;2] 
+ 
+"COP"
+COP_1 = Q_dot_sink_1/W_dot_comp_1_el
+COP_2 = Q_dot_sink_2/W_dot_comp_2_el
+COP = Q_dot_sink_tot/(W_dot_comp_1_el + W_dot_comp_2_el)
+ 
+T_c_i = T_sour[1;2] + 273,15 [K]	
+T_c_o = T_sour[2;1] + 273,15 [K]
+ 
+T_h_o = T_sink[7] + 273,15 [K]
+T_h_i = T_sink[1] + 273,15 [K]
+ 
+T_lm_c = (T_c_i - T_c_o)/(ln(T_c_i/T_c_o))
+T_lm_h = (T_h_o - T_h_i)/(ln(T_h_o/T_h_i))
+ COP_L = (T_lm_h)/ (T_lm_h - T_lm_c)
+ eta_L = COP/COP_L*100
+ 
+"!Pinch analysis"
+DELTAT_pinch_1 = min(DELTAT[1..m])
+DELTAT_pinch_2 = min(DELTAT[m+2..m+n])
+DELTAT_pinch_3 =min(DELTAT[m+n+2..m+n+k])
+DELTAT_pinch_4 =min(DELTAT[m+n+k+2..m+n+k+h])
+DELTAT_pinch_5 =min(DELTAT[m+n+k+h+2..m+n+k+h+g])
+ 
+T_incre_1=(T[2;2]-T[3;2])/(m-1) 
+T_incre_2=(T[3;2]-T_fake)/(n-1) 
+T_incre_3=(T_fake-T[3;1])/(k-1) 
+T_incre_4=(T[3;1]-T_fake_2)/(h-1) 
+T_incre_5=(T_fake_2-T_min_sub)/(g-1) 
+ 
+T_fake = T[3;2] - 1
+T_fake_2 = T[3;1] - 1 
+ 
+T_min_sub = min(T[5;1];T[5;2])
+ 
+T_composit[1]=T[2;2]
+T_composit[m+1]=T[3;2]
+T_composit[m+n+1]=T_fake
+T_composit[m+n+k+1]=T[3;1]
+T_composit[m+n+k+h+1]=T_fake_2
+ 
+Q_dot_hot_sum[m]= Q_dot_hot_sum[m+1]
+Q_dot_hot_sum[m+n]=Q_dot_hot_sum[m+n+1]
+Q_dot_hot_sum[m+n+k]=Q_dot_hot_sum[m+n+k+1]
+Q_dot_hot_sum[m+n+k+h]=Q_dot_hot_sum[m+n+k+h+1]
+Q_dot_hot_sum[m+n+k+h+g]=0
+ 
+T_cold[1]=T_sink[7]
+T_cold[m+1]=T_cold[m]
+T_cold[m+n+1]=T_cold[m+n]
+T_cold[m+n+k+1]=T_cold[m+n+k]
+T_cold[m+n+k+h+1]=T_cold[m+n+k+h] 
+ 
+h_composit_hp1[m+1] =h_composit_hp1[m]
+h_composit_hp1[m+n+1] =h_composit_hp1[m+n]
+h_composit_hp1[m+n+k+1] =h_composit_hp1[m+n+k]
+h_composit_hp1[m+n+k+h+1] =h_composit_hp1[m+n+k+h]
+ 
+ 
+h_composit_hp2[m+1] = h_composit_hp2[m] 
+h_composit_hp2[m+n+1] = h_composit_hp2[m+n] 
+h_composit_hp2[m+n+k+1] =h_composit_hp2[m+n+k]
+h_composit_hp2[m+n+k+h+1] =h_composit_hp2[m+n+k+h]
+ 
+h_cold[1]=enthalpy(R718;T=T_cold[1];P=P_sink[1]) 
+h_cold[m+1]=enthalpy(R718;T=T_cold[m+1];P=P_sink[1]) 
+h_cold[m+n+1]=enthalpy(R718;T=T_cold[m+n+1];P=P_sink[1]) 
+h_cold[m+n+k+1]=enthalpy(R718;T=T_cold[m+n+k+1];P=P_sink[1]) 
+h_cold[m+n+k+h+1]=enthalpy(R718;T=T_cold[m+n+k+h+1];P=P_sink[1]) 
+ 
+DELTAT[1]=T_composit[1]-T_cold[1] 
+DELTAT[m+1]=T_composit[m+1]-T_cold[m+1] 
+DELTAT[m+n+1]=T_composit[m+n+1]-T_cold[m+n+1] 
+DELTAT[m+n+k+1]=T_composit[m+n+k+1]-T_cold[m+n+k+1] 
+DELTAT[m+n+k+h+1]=T_composit[m+n+k+1]-T_cold[m+n+k+h+1] 
+ 
+h_composit_hp1[1] = enthalpy(R$;P=P[3;1];T=T_composit[1])
+h_composit_hp1[m+n+k] = enthalpy(R$;P=P[3;1];x=1)
+ 
+h_composit_hp2[1] = enthalpy(R$;P=P[3;2];T=T_composit[1])
+h_composit_hp2[m] = enthalpy(R$;P=P[3;2];x=1)
+ 
+"Main interval 1"
+Duplicate i=2;m-1
+ 	h_composit_hp2[i] = enthalpy(R$;P=P[3;2];T=T_composit[i])
+End
+ 
+ Duplicate i=2;m
+	T_composit[i]=T_composit[i-1]-T_incre_1
+	h_composit_hp1[i] = enthalpy(R$;P=P[3;1];T=T_composit[i])
+	C_dot_hp1[i-1] = m_dot_ref_1 *(h_composit_hp1[i-1]-h_composit_hp1[i]) /(T_composit[i-1] - T_composit[i]) 
+  	C_dot_hp2[i-1] = m_dot_ref_2 *(h_composit_hp2[i-1]-h_composit_hp2[i]) /(T_composit[i-1] - T_composit[i]) 
+	Q_dot_hot[i-1]=T_incre_1*(cdot(C_dot_hp1[i-1] ;T[2;1];T[5;1];T_composit[i-1];T_composit[i])+cdot(C_dot_hp2[i-1];T[2;2];T[5;2];T_composit[i-1];T_composit[i])) 
+	C_dot_hot[i-1]=Q_dot_hot[i-1]/T_incre_1 
+	Q_dot_hot_sum[i-1]=Q_dot_hot_sum[i]+Q_dot_hot[i-1] 
+	Q_dot_hot[i-1]=m_dot_sink*(h_cold[i-1]-h_cold[i]) 
+	T_cold[i]=temperature(R718;h=h_cold[i];P=P_sink[1]) 
+ 	DELTAT[i]=T_composit[i]-T_cold[i]
+End
+"Main interval 2" 
+Duplicate i=m+2;m+n
+	T_composit[i]=T_composit[i-1]-T_incre_2
+ 	h_composit_hp2[i] = enthalpy(R$;P=P[3;2];T=T_composit[i])
+ 	h_composit_hp1[i] = enthalpy(R$;P=P[3;1];T=T_composit[i])
+ 
+	C_dot_hp1[i-1] = m_dot_ref_1 *(h_composit_hp1[i-1]-h_composit_hp1[i]) /(T_composit[i-1] - T_composit[i]) 
+  	C_dot_hp2[i-1] = m_dot_ref_2 *(h_composit_hp2[i-1]-h_composit_hp2[i]) /(T_composit[i-1] - T_composit[i])
+ 
+	Q_dot_hot[i-1]=T_incre_2*(cdot(C_dot_hp1[i-1] ;T[2;1];T[5;1];T_composit[i-1];T_composit[i])+cdot(C_dot_hp2[i-1];T[2;2];T[5;2];T_composit[i-1];T_composit[i])) 
+	Q_dot_hot_sum[i-1]=Q_dot_hot_sum[i]+Q_dot_hot[i-1] 
+	Q_dot_hot[i-1]=m_dot_sink*(h_cold[i-1]-h_cold[i]) 
+	T_cold[i]=temperature(R718;h=h_cold[i];P=P_sink[1])  
+	DELTAT[i]=T_composit[i]-T_cold[i] 
+End
+ 
+"Main interval 3"
+Duplicate i=m+n+2;m+n+k-1
+ 	h_composit_hp1[i] = enthalpy(R$;P=P[3;1];T=T_composit[i])
+ End
+ 
+Duplicate i=m+n+2;m+n+k
+	T_composit[i]=T_composit[i-1]-T_incre_3
+	h_composit_hp2[i] = enthalpy(R$;P=P[3;2];T=T_composit[i]) 
+ 
+	C_dot_hp1[i-1] = m_dot_ref_1 *(h_composit_hp1[i-1]-h_composit_hp1[i]) /(T_composit[i-1] - T_composit[i]) 
+  	C_dot_hp2[i-1] = m_dot_ref_2 *(h_composit_hp2[i-1]-h_composit_hp2[i]) /(T_composit[i-1] - T_composit[i]) 
+ 	Q_dot_hot[i-1]=T_incre_3*(cdot(C_dot_hp1[i-1] ;T[2;1];T[5;1];T_composit[i-1];T_composit[i])+cdot(C_dot_hp2[i-1];T[2;2];T[5;2];T_composit[i-1];T_composit[i])) 
+	C_dot_hot[i-1]=Q_dot_hot[i-1]/T_incre_3
+	Q_dot_hot_sum[i-1]=Q_dot_hot_sum[i]+Q_dot_hot[i-1] 
+	Q_dot_hot[i-1]=m_dot_sink*(h_cold[i-1]-h_cold[i]) 
+	T_cold[i]=temperature(R718;h=h_cold[i];P=P_sink[1])  
+	DELTAT[i]=T_composit[i]-T_cold[i]  
+End
+ 
+"Main interval 4"
+Duplicate i=m+n+k+2;m+n+k+h
+	T_composit[i]=T_composit[i-1]-T_incre_4
+	h_composit_hp1[i] = enthalpy(R$;P=P[3;1];T=T_composit[i])
+	h_composit_hp2[i] = enthalpy(R$;P=P[3;2];T=T_composit[i]) 
+	C_dot_hp1[i-1] = m_dot_ref_1 *(h_composit_hp1[i-1]-h_composit_hp1[i]) /(T_composit[i-1] - T_composit[i]) 
+  	C_dot_hp2[i-1] = m_dot_ref_2 *(h_composit_hp2[i-1]-h_composit_hp2[i]) /(T_composit[i-1] - T_composit[i]) 
+ 
+ 	Q_dot_hot[i-1]=T_incre_4*(cdot(C_dot_hp1[i-1] ;T[2;1];T[5;1];T_composit[i-1];T_composit[i])+cdot(C_dot_hp2[i-1];T[2;2];T[5;2];T_composit[i-1];T_composit[i])) 
+ 
+	C_dot_hot[i-1]=Q_dot_hot[i-1]/T_incre_4
+	Q_dot_hot_sum[i-1]=Q_dot_hot_sum[i]+Q_dot_hot[i-1] 
+	Q_dot_hot[i-1]=m_dot_sink*(h_cold[i-1]-h_cold[i]) 
+	T_cold[i]=temperature(R718;h=h_cold[i];P=P_sink[1])  
+	DELTAT[i]=T_composit[i]-T_cold[i]  
+End
+ 
+"Main interval 5"
+Duplicate i=m+n+k+h+2;m+n+k+h+g
+	T_composit[i]=T_composit[i-1]-T_incre_5
+	h_composit_hp1[i] = enthalpy(R$;P=P[3;1];T=T_composit[i])
+	h_composit_hp2[i] = enthalpy(R$;P=P[3;2];T=T_composit[i]) 
+ 
+	C_dot_hp1[i-1] = m_dot_ref_1 *(h_composit_hp1[i-1]-h_composit_hp1[i]) /(T_composit[i-1] - T_composit[i]) 
+  	C_dot_hp2[i-1] = m_dot_ref_2 *(h_composit_hp2[i-1]-h_composit_hp2[i]) /(T_composit[i-1] - T_composit[i]) 
+ 
+ 	Q_dot_hot[i-1]=T_incre_5*(cdot(C_dot_hp1[i-1] ;T[2;1];T[5;1];T_composit[i-1];T_composit[i])+cdot(C_dot_hp2[i-1];T[2;2];T[5;2];T_composit[i-1];T_composit[i])) 
+ 
+	C_dot_hot[i-1]=Q_dot_hot[i-1]/T_incre_5
+	Q_dot_hot_sum[i-1]=Q_dot_hot_sum[i]+Q_dot_hot[i-1] 
+	Q_dot_hot[i-1]=m_dot_sink*(h_cold[i-1]-h_cold[i]) 
+	T_cold[i]=temperature(R718;h=h_cold[i];P=P_sink[1])  
+	DELTAT[i]=T_composit[i]-T_cold[i]  
+End
+ 
+"COP_opt optimization"
+Call pinch_x$(DELTAT_pinch_1;(DELTAT_min):err[1])
+Call pinch_x$(DELTAT_pinch_2;(DELTAT_min):err[2])
+Call pinch_x$(DELTAT_pinch_3;(DELTAT_min):err[3])
+Call pinch_x$(DELTAT_pinch_4;(DELTAT_min):err[4])
+Call pinch_x$(DELTAT_pinch_5;(DELTAT_min):err[5])
+ 
+Error=sum(err[1..5]) 
+COP_opt = COP - Error 
