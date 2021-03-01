@@ -5,7 +5,7 @@ We present this code based on Engineering Equation Solver ([EES](http://fchartso
 which applies the pinch analysis to a ammonia heat pump system with two, one-stage HP cycles. 
 This code is the implementation of the method presented in Jørgensen, P. H., Ommen, Elmegaard, B. Quantification and comparison of COP improvement approaches. Submitted to International Journal of Refrigeration.
 
-This code is hosted [here](https://github.com/PernilleHartmund/Pinch_analysis_applied_on_heat_pump_systems).
+This code is hosted [here](https://github.com/PernilleHartmund/Pinch_analysis_applied_on_HPsystems).
 
 How to cite
 -----------
